@@ -1,0 +1,5 @@
+
+#define WIFI_SSID "MIWIFI_cQJD"
+#define WIFI_PWD "FYz6UEY7"
+#define WIFI_ESP_AP_SSID "MOVISTAR_ES32"
+#define WIFI_ESP_AP_PWD "FYz6UEY7"
