@@ -2,6 +2,7 @@
 #include <cmath>
 #include <esp_log.h>
 #include <driver/gpio.h>
+#include <driver/i2c.h>
 #include <freertos/task.h>
 #include <driver/ledc.h>
 #include <esp_err.h>
@@ -20,8 +21,19 @@
 #include "SSD1366.h"
 #include "comms/wifi.h"
 
+//SENSOR HDC1080*********
+#include "hdc1080.h"
+#include "esp8266_wrapper.h"
+
+
+//EINK SCREEN
+#include <GxEPD2_BW.h>
+#include <GxEPD2_3C.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#define ENABLE_GxEPD2_GFX 0
+
 #define MAX_PWM_DUTY 1023
-#define SECONDS_UPDATE_DHT22 3
+#define SECONDS_UPDATE_DHT22 5
 
 constexpr gpio_num_t LED_BUILTIN = GPIO_NUM_2;
 constexpr gpio_num_t ORANGE_TEST = GPIO_NUM_13;
@@ -33,6 +45,46 @@ constexpr gpio_num_t SCL_GPIO = GPIO_NUM_22;
 
 
 extern "C" void app_main();
+
+//SENSOR HDC1080*********
+
+
+// user task stack depth for ESP32
+#define TASK_STACK_DEPTH 2048
+// I2C interface defintions for ESP32 and ESP8266
+#define I2C_BUS       0
+#define I2C_FREQ      I2C_FREQ_100K
+
+/* -- user tasks --------------------------------------------------- */
+
+static hdc1080_sensor_t* sensor;
+    float temperature;
+    float humidity;
+
+void user_task_periodic(void *pvParameters)
+{
+    float temperature;
+    float humidity;
+
+    TickType_t last_wakeup = xTaskGetTickCount();
+
+    while (1)
+    {
+
+        // get the results and do something with them
+        if (hdc1080_read(sensor, &temperature, &humidity))
+            printf("%.3f HDC1080 Sensor periodic: temperature %.2f degrees, humidity %.2f\n",
+                   (double)sdk_system_get_time()*1e-3, temperature, humidity);
+
+        // passive waiting until 1 second is over
+        vTaskDelayUntil(&last_wakeup, 1000 / portTICK_PERIOD_MS);
+    }
+}
+//SENSOR HDC1080*********
+
+//EINK SCREEN 
+// 2.9'' EPD Module
+GxEPD2_BW<GxEPD2_290_BS, GxEPD2_290_BS::HEIGHT> display(GxEPD2_290_BS(/*CS=5*/ 5, /*DC=*/ 0, /*RES=*/ 2, /*BUSY=*/ 15)); // DEPG0290BS 128x296, SSD1680
 
 int cnt = 0;
 int dir = 1;
@@ -46,6 +98,7 @@ char oledStr[64];
 int64_t timePassSensTemp = esp_timer_get_time();
 
 void app_main(){
+
 
     //Setup
     //setup();
@@ -110,8 +163,21 @@ void app_main(){
     }
     ESP_ERROR_CHECK(ret);
 
+    // init all I2C bus interfaces at which HDC1080 sensors are connected
+    i2c_init (I2C_BUS, SCL_GPIO, SDA_GPIO, I2C_FREQ);
+    // init the sensor with slave address HDC1080_I2C_ADDR connected I2C_BUS.
+    sensor = hdc1080_init_sensor (I2C_BUS, HDC1080_ADDR);
 
+    /*if (sensor)
+    {
+        printf("Initialized HDC1080 sensor: manufacurer %x, device id %x\n", hdc1080_get_manufacturer_id(sensor), hdc1080_get_device_id(sensor));
+        // create a periodic task that uses the sensor
+        xTaskCreate(user_task_periodic, "user_task_periodic", TASK_STACK_DEPTH, NULL, 2, NULL);
 
+    }
+    else
+        printf("Could not initialize HDC1080 sensor\n");
+*/
     //Loop
     while(1){
         //loop();
@@ -139,10 +205,12 @@ void app_main(){
 
         // Actualizar cada 3 segundos
         if(((int)(esp_timer_get_time()-timePassSensTemp)) > SECONDS_UPDATE_DHT22*1000*1000){
-            //printf("Tiempo entre lectura: %d\n", ((int)(esp_timer_get_time()-timePassSensTemp)));
+            printf("Tiempo entre lectura: %d\n", ((int)(esp_timer_get_time()-timePassSensTemp)));
             timePassSensTemp = esp_timer_get_time();
             
-
+             if (hdc1080_read(sensor, &temperature, &humidity))
+            printf("%.3f HDC1080 Sensor periodic: temperature %.2f degrees, humidity %.2f\n",
+                   (double)sdk_system_get_time()*1e-3, temperature, humidity);
             
         }   
         
